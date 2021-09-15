@@ -120,7 +120,7 @@ impl RegistrationManager {
         headers.push(Header::CallId(format!(
             "{}@{}",
             self.call_id,
-            self.remote_uri.host()
+            self.local_uri.host()
         )));
         headers.push(self.via_header());
         cfg.write_headers_vec(&mut headers);
