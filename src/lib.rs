@@ -65,11 +65,12 @@ pub mod parse;
 mod request;
 mod response;
 pub mod uri;
+pub mod utils;
 
 pub use crate::{
     client::{
         HeaderWriteConfig, InviteHelper, MessageHelper, MessageWriter, RegistrationManager,
-        SoftPhone,
+
     },
     core::{
         parse_message, parse_request, parse_response, parse_version, EventRequestExt, Method,
@@ -83,4 +84,6 @@ pub use crate::{
     request::RequestGenerator,
     response::ResponseGenerator,
     uri::{parse_uri, Domain, Uri, UriAuth, UriParam, UriSchema},
+
+    utils::{random_alphanumeric}
 };

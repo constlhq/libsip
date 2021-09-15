@@ -111,8 +111,8 @@ impl AuthHeader {
         let ha1 = md5::compute(&format!("{}:{}:{}", ctx.user, realm, ctx.pass));
         let ha2 = md5::compute(format!("REGISTER:{}", ctx.uri));
         let digest = format!(
-            "{:x}:{}:{:08}:{:x}:auth:{:x}",
-            ha1, nonce, ctx.nc, cnonce, ha2
+            "{:x}:{}:{:x}",
+            ha1, nonce, ha2
         );
         let pass = md5::compute(digest);
         map.insert("response".into(), format!("{:x}", pass));

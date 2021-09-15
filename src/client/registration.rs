@@ -1,6 +1,8 @@
 use crate::*;
 
 use std::io::{Error as IoError, ErrorKind as IoErrorKind, Result as IoResult};
+use nom::Slice;
+use std::ops::Range;
 
 /// Handle's the SIP registration process.
 /// This structure is designed to handle the authentication
@@ -10,7 +12,7 @@ use std::io::{Error as IoError, ErrorKind as IoErrorKind, Result as IoResult};
 #[derive(Debug, PartialEq, Clone)]
 pub struct RegistrationManager {
     /// Uri representing the account to attempt to register.
-    account_uri: Uri,
+    remote_uri: Uri,
     /// Uri representing the local machine used to register.
     local_uri: Uri,
     /// Current REGISTER cseq count number.
@@ -28,9 +30,9 @@ pub struct RegistrationManager {
     // the value of the expires header.
     expires_header: Option<u32>,
     /// The username used for login
-    user: Option<String>,
+    user: String,
     /// The password to use for login.
-    pass: Option<String>,
+    pass: String,
     /// Authentication realm
     realm: Option<String>,
     /// Authentication nonce
@@ -39,21 +41,21 @@ pub struct RegistrationManager {
 
 impl RegistrationManager {
     /// Create a new Registration Manager typically this will happen once in a program's
-    /// lifecycle. `account_uri` is the sip uri used to authenticate with and `local_uri`
+    /// lifecycle. `remote_uri` is the sip uri used to authenticate with and `local_uri`
     /// is the sip uri of the listening socket.
-    pub fn new(account_uri: Uri, local_uri: Uri) -> RegistrationManager {
+    pub fn new(remote_uri: Uri, local_uri: Uri, user: &str) -> RegistrationManager {
         RegistrationManager {
-            account_uri,
+            remote_uri,
             local_uri,
             cseq_counter: 444,
             auth_header: None,
             nonce_c: 1,
             c_nonce: None,
-            branch: format!("{:x}", md5::compute(rand::random::<[u8; 16]>())),
+            branch: format!("z9hG4bK{}", random_alphanumeric(12)),
             call_id: format!("{:x}", md5::compute(rand::random::<[u8; 16]>())),
             expires_header: None,
-            user: None,
-            pass: None,
+            user: user.to_owned(),
+            pass: "12345678".to_owned(),
             realm: None,
             nonce: None,
         }
@@ -61,12 +63,16 @@ impl RegistrationManager {
 
     /// Set the username used in the authentication process.
     pub fn username<S: Into<String>>(&mut self, s: S) {
-        self.user = Some(s.into());
+        self.user = s.into();
     }
 
     /// Set the password used in the authentication process.
     pub fn password<S: Into<String>>(&mut self, p: S) {
-        self.pass = Some(p.into());
+        self.pass = p.into();
+    }
+
+    pub fn set_realm<S: Into<String>>(&mut self, r: S) {
+        self.realm = Some(r.into());
     }
 
     /// Get the register request. if this method is called before `set_challenge`
@@ -75,20 +81,32 @@ impl RegistrationManager {
     pub fn get_request(&mut self, cfg: &HeaderWriteConfig) -> IoResult<SipMessage> {
         self.cseq_counter += 1;
         self.nonce_c += 1;
-        let to_header = self.account_uri.clone();
-        let from_header = self.account_uri.clone();
+
+        let mut from_uri = self.user.to_owned();
+
+        from_uri.push_str("@");
+
+        from_uri.push_str(self.realm.as_ref().unwrap().as_str());
+
+        let to_header = Uri::sip(Domain::Domain(from_uri, None));
+
+        let from_header = to_header.clone().parameter(UriParam::Tag("asdfss".to_string()));
+
+        // let to_header = self.local_uri.clone();
+        // let from_header = self.local_uri.clone();
+
         let mut contact_header = self.local_uri.clone();
         let mut headers = vec![];
 
-        if let Some(name) = &self.user {
-            contact_header = contact_header.auth(UriAuth::new(name));
+        if !self.user.is_empty() {
+            contact_header = contact_header.auth(UriAuth::new(&self.user));
             if let Some(auth_header) = &self.auth_header {
-                if let Some(pass) = &self.pass {
+                if self.pass.is_empty() {
                     let ctx = AuthContext {
-                        user: &name,
-                        pass,
+                        user: &self.user,
+                        pass: &self.pass,
                         nc: self.nonce_c,
-                        uri: &self.account_uri,
+                        uri: &self.remote_uri,
                     };
                     headers.push(Header::Authorization(auth_header.authenticate(ctx)?));
                 }
@@ -102,7 +120,7 @@ impl RegistrationManager {
         headers.push(Header::CallId(format!(
             "{}@{}",
             self.call_id,
-            self.account_uri.host()
+            self.remote_uri.host()
         )));
         headers.push(self.via_header());
         cfg.write_headers_vec(&mut headers);
@@ -112,7 +130,7 @@ impl RegistrationManager {
         }
         Ok(RequestGenerator::new()
             .method(Method::Register)
-            .uri(self.account_uri.clone().authless())
+            .uri(self.remote_uri.clone())
             .headers(headers)
             .build()?)
     }
@@ -125,11 +143,11 @@ impl RegistrationManager {
                 match item {
                     Header::WwwAuthenticate(auth) => {
                         self.auth_header = Some(auth);
-                    },
+                    }
                     Header::Expires(expire) => {
                         self.expires_header = Some(expire);
-                    },
-                    _ => {},
+                    }
+                    _ => {}
                 }
             }
             Ok(())

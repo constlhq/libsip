@@ -27,11 +27,12 @@ pub enum UriParam {
     Received(Domain),
     RPort(Option<u16>),
     Other(String, Option<String>),
+    Tag(String),
 }
 
 impl UriParam {
     /// Create `UriParam` from a key value pair.
-    pub fn from_key<'a, E: ParseError<&'a [u8]>+ FromExternalError<&'a[u8], std::io::Error>  + FromExternalError<&'a[u8], E>>(
+    pub fn from_key<'a, E: ParseError<&'a [u8]> + FromExternalError<&'a [u8], std::io::Error> + FromExternalError<&'a [u8], E>>(
         key: &'a [u8],
         value: &'a [u8],
     ) -> Result<UriParam, nom::Err<E>> {
@@ -45,7 +46,10 @@ impl UriParam {
                 //let mut data = value.to_vec();
                 //data.push(b' ');
                 Ok(UriParam::Received(parse_domain::<E>(&value)?.1))
-            },
+            }
+            b"tag" => Ok(UriParam::Branch(
+                String::from_utf8(value.to_vec()).expect("Utf-8 Error"),
+            )),
             _method => Ok(UriParam::Other(
                 String::from_utf8_lossy(key).to_string(),
                 Some(String::from_utf8_lossy(value).to_string()),
@@ -62,13 +66,14 @@ impl fmt::Display for UriParam {
             UriParam::Received(branch) => write!(f, ";received={}", branch),
             UriParam::RPort(Some(value)) => write!(f, ";rport={}", value),
             UriParam::RPort(None) => write!(f, ";rport"),
+            UriParam::Tag(tag) => write!(f, ";tag={}", tag),
             UriParam::Other(key, Some(value)) => write!(f, ";{}={}", key, value),
             UriParam::Other(key, None) => write!(f, ";{}", key),
         }
     }
 }
 
-pub fn parse_param<'a, E: ParseError<&'a [u8]>+ FromExternalError<&'a[u8], std::io::Error>  + FromExternalError<&'a[u8], E>>(input: &'a [u8]) -> IResult<&'a [u8], UriParam, E> {
+pub fn parse_param<'a, E: ParseError<&'a [u8]> + FromExternalError<&'a [u8], std::io::Error> + FromExternalError<&'a [u8], E>>(input: &'a [u8]) -> IResult<&'a [u8], UriParam, E> {
     alt::<_, _, E, _>((
         parse_named_param,
         map(tag::<_, _, E>(";rport"), |_| UriParam::RPort(None)),
@@ -77,7 +82,7 @@ pub fn parse_param<'a, E: ParseError<&'a [u8]>+ FromExternalError<&'a[u8], std::
 }
 
 /// Parse a single named field param.
-pub fn parse_named_param<'a, E: ParseError<&'a [u8]>+ FromExternalError<&'a[u8], std::io::Error>  + FromExternalError<&'a[u8], E>>(
+pub fn parse_named_param<'a, E: ParseError<&'a [u8]> + FromExternalError<&'a [u8], std::io::Error> + FromExternalError<&'a [u8], E>>(
     input: &'a [u8],
 ) -> IResult<&'a [u8], UriParam, E> {
     let (input, _) = tag(";")(input)?;
@@ -87,7 +92,7 @@ pub fn parse_named_param<'a, E: ParseError<&'a [u8]>+ FromExternalError<&'a[u8],
     UriParam::from_key::<E>(key, value).and_then(|item| Ok((input, item)))
 }
 
-pub fn parse_single_param<'a, E: ParseError<&'a [u8]>+ FromExternalError<&'a[u8], std::io::Error>  + FromExternalError<&'a[u8], E>>(
+pub fn parse_single_param<'a, E: ParseError<&'a [u8]> + FromExternalError<&'a [u8], std::io::Error> + FromExternalError<&'a [u8], E>>(
     input: &'a [u8],
 ) -> IResult<&'a [u8], UriParam, E> {
     let (input, _) = tag(";")(input)?;
@@ -99,7 +104,7 @@ pub fn parse_single_param<'a, E: ParseError<&'a [u8]>+ FromExternalError<&'a[u8]
 }
 
 /// Parse multiple uri parameters.
-pub fn parse_params<'a, E: ParseError<&'a [u8]>+ FromExternalError<&'a[u8], std::io::Error>  + FromExternalError<&'a[u8], E>>(
+pub fn parse_params<'a, E: ParseError<&'a [u8]> + FromExternalError<&'a [u8], std::io::Error> + FromExternalError<&'a [u8], E>>(
     input: &'a [u8],
 ) -> IResult<&'a [u8], Vec<UriParam>, E> {
     let mut results = vec![];
